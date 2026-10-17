@@ -1,0 +1,10 @@
+# 학습·내보내기·평가 (Mac GPU, Python 3.12 에서 확인한 판)
+torch==2.14.1
+onnx==1.17.0
+onnxruntime==1.31.0
+opencv-python==5.0.0.93
+numpy==2.5.4
+pillow==12.3.0
+pyyaml==6.0.3
+rapidfuzz==3.14.6
+tqdm==4.70.1

@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this model, please cite it as below."
+type: software
+title: "korean-handwriting-rec: Korean handwriting OCR model fine-tuned from PP-OCRv5"
+abstract: >-
+  Korean handwriting OCR recognition model. The PP-OCRv5 Korean recognition
+  model (korean_PP-OCRv5_mobile_rec) fine-tuned on 4.6M Korean word images of
+  handwriting and printed government forms from AI Hub. Word accuracy on
+  held-out handwritten words rises from 67.2% to 97.4%.
+authors:
+  - given-names: Byeory
+    family-names: Jeong
+    alias: VerifiedIdiot
+repository-code: "https://github.com/VerifiedIdiot/korean-handwriting-rec"
+url: "https://huggingface.co/Rebeccaaaaaaaa/korean-handwriting-rec"
+license: Apache-2.0
+version: 1.0.0
+date-released: 2026-10-18
+keywords:
+  - ocr
+  - korean
+  - handwriting-recognition
+  - handwritten-text-recognition
+  - hangul
+  - pp-ocrv5
+  - paddleocr
+  - onnx

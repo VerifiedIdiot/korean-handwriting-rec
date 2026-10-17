@@ -1,0 +1,11 @@
+# 학습 데이터·체크포인트·기반 저장소는 올리지 않는다 (AI Hub 데이터는 재배포 불가)
+data/
+output/
+pretrained/
+configs/
+PaddleOCR/
+PaddleOCR2Pytorch/
+.venv/
+__pycache__/
+*.log
+*.pt

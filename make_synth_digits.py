@@ -143,15 +143,43 @@ class Hand:
 class Text:
     """서류에 흔한 숫자 표기 — 서식 문장은 넣지 않는다 (OCR 은 문자 중립)."""
 
+    # 원 기호의 정답 글자 — 기본 사전에는 ₩ 가 없어 W (인쇄된 ₩ 도 W 로 읽는다). ₩ 를 더한 사전(OCR_DICT)이면 ₩
+    WON = "W"
+    # 손으로 쓰는 기호(% + = # ² ~ 〃)가 든 표기의 비율 (--symbols)
+    SYMBOLS = 0.0
+
+    @staticmethod
+    def symbol(rng: random.Random) -> str:
+        """사람이 서류에 손으로 쓰는 기호가 든 표기 — 이율·면적·기간·계산·번호·같음표."""
+        n = lambda a, b: rng.randint(a, b)  # noqa: E731
+        kind = rng.random()
+        if kind < 0.22:  # 이율·지분
+            return rng.choice([f"{n(1, 99)}%", f"{n(1, 9)}.{n(0, 9)}%", f"{n(1, 20)}.{n(0, 99):02d}%"])
+        if kind < 0.42:  # 면적 — ㎡ 는 손으로 m² 로 쓴다
+            return rng.choice([f"{n(10, 300)}.{n(0, 99):02d}m²", f"{n(10, 300)}m²", f"{n(10, 300)}.{n(1, 9)}m²"])
+        if kind < 0.62:  # 기간
+            y = n(2000, 2035)
+            return rng.choice([f"{y}.{n(1, 12)}.{n(1, 28)}~{y + n(1, 3)}.{n(1, 12)}.{n(1, 28)}",
+                               f"{n(1, 12)}~{n(1, 12)}", f"{y}~{y + n(1, 5)}", f"{n(1, 12)}.{n(1, 28)}~{n(1, 12)}.{n(1, 28)}"])
+        if kind < 0.77:  # 계산
+            a, b = n(1, 9999), n(1, 9999)
+            return rng.choice([f"{a}+{b}={a + b}", f"{a}+{b}", f"{a:,}+{b:,}", f"={a:,}"])
+        if kind < 0.9:  # 번호
+            return rng.choice([f"#{n(1, 999)}", f"#{n(1, 9999)}", f"{n(1, 99)}-#{n(1, 99)}"])
+        return rng.choice(["〃", "〃", f"〃{n(1, 99)}"])  # 같음표
+
     @staticmethod
     def draw(rng: random.Random) -> str:
         n = lambda a, b: rng.randint(a, b)  # noqa: E731
+        if rng.random() < Text.SYMBOLS:
+            return Text.symbol(rng)
         kind = rng.random()
         if kind < 0.35:  # 금액
             value = rng.choice([n(1, 999) * 10**k for k in range(2, 7)])
             s = f"{value:,}" if rng.random() < 0.8 else str(value)
-            # W = 원 기호(₩) — 사전에 ₩ 가 없어 인쇄된 ₩ 도 W 로 읽는다 (2026-11-20 확인). 손글씨 ₩ 를 7 로 읽던 것을 막는다
-            return rng.choice([s, s, f"({s})", f"*{s}", f"{s}-", f"W{s}", f"W{s}", f"(W{s})"])
+            # 원 기호 — 손글씨 ₩ 를 7 로 읽던 것을 막는다 (2026-11-20 확인)
+            won = Text.WON
+            return rng.choice([s, s, f"({s})", f"*{s}", f"{s}-", f"{won}{s}", f"{won}{s}", f"({won}{s})"])
         if kind < 0.6:  # 날짜
             y, m, d = n(1990, 2035), n(1, 12), n(1, 28)
             sep = rng.choice([".", ".", "-", "/"])
@@ -175,7 +203,8 @@ class Pen:
 
     @staticmethod
     def mark(char: str, height: int, stroke: float, rng: random.Random) -> np.ndarray:
-        w = {"," : 0.35, ".": 0.3, "-": 0.55, "/": 0.5, "(": 0.35, ")": 0.35, "*": 0.5, "~": 0.6, ":": 0.3, "W": 0.8}[char]
+        w = {"," : 0.35, ".": 0.3, "-": 0.55, "/": 0.5, "(": 0.35, ")": 0.35, "*": 0.5, "~": 0.6, ":": 0.3, "W": 0.8, "₩": 0.8,
+             "〃": 0.4, "%": 0.7, "+": 0.55, "=": 0.55, "#": 0.6, "m": 0.75}[char]
         width = max(4, int(height * w * rng.uniform(0.8, 1.25)))
         canvas = np.zeros((height, width), np.float32)
         t = max(1, int(round(stroke * rng.uniform(0.8, 1.2))))
@@ -205,12 +234,38 @@ class Pen:
             xs = np.linspace(0.1, 0.9, 12)
             points = np.array([pt(x, 0.5 + 0.1 * math.sin(x * 2 * math.pi)) for x in xs], np.int32)
             cv2.polylines(canvas, [points], False, 1.0, t)
-        elif char == "W":
+        elif char in "W₩":
             # 손글씨 ₩ — W 에 가로획 하나 또는 둘
             points = np.array([pt(0.05, 0.12), pt(0.28, 0.92), pt(0.5, 0.35), pt(0.72, 0.92), pt(0.95, 0.12)], np.int32)
             cv2.polylines(canvas, [points], False, 1.0, t)
             for y in (0.45,) if rng.random() < 0.5 else (0.4, 0.6):
                 cv2.line(canvas, pt(0.0, y), pt(1.0, y), 1.0, t)
+        elif char == "〃":
+            # 같음표 — 위쪽에 비스듬한 짧은 획 둘
+            for x in (0.3, 0.7):
+                cv2.line(canvas, pt(x, 0.15), pt(x - 0.15, 0.45), 1.0, t)
+        elif char == "%":
+            r = max(2, int(min(width, height) * 0.14))
+            cv2.circle(canvas, pt(0.25, 0.3), r, 1.0, max(1, t - 1))
+            cv2.circle(canvas, pt(0.75, 0.75), r, 1.0, max(1, t - 1))
+            cv2.line(canvas, pt(0.85, 0.1), pt(0.15, 0.95), 1.0, t)
+        elif char == "+":
+            cv2.line(canvas, pt(0.1, 0.55), pt(0.9, 0.55), 1.0, t)
+            cv2.line(canvas, pt(0.5, 0.2), pt(0.5, 0.9), 1.0, t)
+        elif char == "=":
+            for y in (0.42, 0.68):
+                cv2.line(canvas, pt(0.1, y), pt(0.9, y), 1.0, t)
+        elif char == "#":
+            for x in (0.38, 0.68):
+                cv2.line(canvas, pt(x + 0.08, 0.15), pt(x - 0.08, 0.95), 1.0, t)
+            for y in (0.4, 0.7):
+                cv2.line(canvas, pt(0.05, y), pt(0.95, y), 1.0, t)
+        elif char == "m":
+            # 소문자 m — 세로획 하나에 언덕 둘 (숫자 높이의 아래 60%)
+            points = [pt(0.08, 0.95), pt(0.08, 0.45), pt(0.3, 0.38), pt(0.45, 0.5), pt(0.45, 0.95)]
+            cv2.polylines(canvas, [np.array(points, np.int32)], False, 1.0, t)
+            points = [pt(0.45, 0.5), pt(0.68, 0.38), pt(0.88, 0.5), pt(0.88, 0.95)]
+            cv2.polylines(canvas, [np.array(points, np.int32)], False, 1.0, t)
         elif char == ":":
             for y in (0.45, 0.85):
                 cv2.circle(canvas, pt(0.5, y), max(1, t // 2 + 1), 1.0, -1)
@@ -223,7 +278,16 @@ class Strip:
         height = int(hand.height)
         pieces = []
         for char in text:
-            if char.isdigit():
+            if char == "²":
+                # 위첨자 2 — 그 필자의 2 를 반 크기로 위쪽에
+                if "2" not in hand.glyphs:
+                    return None
+                small = rng.choice(hand.glyphs["2"])
+                sh = max(2, int(height * rng.uniform(0.42, 0.55)))
+                small = cv2.resize(small, (max(2, int(small.shape[1] * sh / small.shape[0])), sh))
+                g = np.zeros((height, small.shape[1]), np.float32)
+                g[: small.shape[0]] = small
+            elif char.isdigit():
                 if char not in hand.glyphs:
                     return None
                 g = rng.choice(hand.glyphs[char])
@@ -275,7 +339,10 @@ def main() -> None:
     parser.add_argument("--count", type=int, default=300000)
     parser.add_argument("--pages", type=int, default=4000, help="숫자를 모을 쪽(필자) 수")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--won", default="W", help="원 기호의 정답 글자 — ₩ 를 더한 사전으로 학습할 때 ₩")
+    parser.add_argument("--symbols", type=float, default=0.0, help="손으로 쓰는 기호(% + = # ² ~ 〃)가 든 표기의 비율")
     args = parser.parse_args()
+    Text.WON, Text.SYMBOLS = args.won, args.symbols
     rng = random.Random(args.seed)
     labels = zipfile.ZipFile(args.labels, metadata_encoding="cp949")
     images = {}

@@ -19,7 +19,7 @@ import torch
 from rapidfuzz.distance import Levenshtein
 
 from convert_check import ONNX, decode, preprocess
-from train_rec import build_model
+from train_rec import load_checkpoint
 
 
 # AI Hub 053 쪽 이름에 든 종류 표시 (IMG_OCR_53_4PO_09451 …)
@@ -49,8 +49,7 @@ def main() -> None:
     parser.add_argument("--train", type=Path, help="학습 라벨 목록 — 주면 학습에 없던 단어만 따로도 잰다")
     args = parser.parse_args()
 
-    model = build_model()
-    model.load_state_dict(torch.load(args.checkpoint, map_location="cpu", weights_only=True))
+    model = load_checkpoint(args.checkpoint)
     model.eval()
     torch.onnx.export(
         model,

@@ -57,6 +57,24 @@ class CtcRec(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(self.encoder(self.backbone(x)))
 
+    @staticmethod
+    def widen(state: dict, classes: int) -> dict:
+        """출력층을 새 사전 크기로 넓힌다 — 더한 글자 칸을 공백(마지막 칸) 앞에 끼운다.
+        새 칸은 지금 그 글자를 대신 읽던 글자(₩ → W, 〃 → ″)의 값으로 시작해 처음부터 그 자리를 잇는다."""
+        weight, bias = state["head.fc.weight"], state["head.fc.bias"]
+        old = weight.shape[0]
+        if old >= classes:
+            return state
+        stand_in = {"₩": "W", "〃": "″"}
+        rows_w, rows_b = [weight[:-1]], [bias[:-1]]
+        for char in CHARS[old - 1 : classes - 1]:
+            source = CHARS.index(stand_in.get(char, " "))
+            rows_w.append(weight[source : source + 1])
+            rows_b.append(bias[source : source + 1])
+        rows_w.append(weight[-1:])
+        rows_b.append(bias[-1:])
+        return {**state, "head.fc.weight": torch.cat(rows_w), "head.fc.bias": torch.cat(rows_b)}
+
     def train(self, mode: bool = True) -> "CtcRec":
         super().train(mode)
         # 앞단은 늘 추론 동작: 학습 모드의 adaptive_avg_pool2d([1, 40]) 는 너비 320 입력을 전제로 한다
@@ -79,6 +97,18 @@ def build_model() -> CtcRec:
     for module in model.backbone.modules():
         if module is not model.backbone and callable(getattr(module, "rep", None)):
             module.rep()
+    if model.head.fc.out_features < len(CHARS):
+        # 사전에 글자를 더했다 (OCR_DICT) — 출력층을 넓힌다
+        state = CtcRec.widen(model.state_dict(), len(CHARS))
+        model.head.fc = nn.Linear(model.head.fc.in_features, len(CHARS))
+        model.load_state_dict(state)
+    return model
+
+
+def load_checkpoint(path: Path) -> CtcRec:
+    """학습한 가중치 — 사전 크기(OCR_DICT)에 맞춰 출력층을 넓혀 읽는다."""
+    model = build_model()
+    model.load_state_dict(CtcRec.widen(torch.load(path, map_location="cpu", weights_only=True), len(CHARS)))
     return model
 
 
@@ -283,7 +313,7 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     model = build_model()
     if args.resume:
-        model.load_state_dict(torch.load(args.resume, map_location="cpu", weights_only=True))
+        model.load_state_dict(CtcRec.widen(torch.load(args.resume, map_location="cpu", weights_only=True), len(CHARS)))
     model = model.to(device)
     # 컴파일본은 같은 매개변수를 쓴다 — 저장은 원래 모듈로 해 키 이름이 바뀌지 않게 한다
     net = torch.compile(model) if args.compile else model

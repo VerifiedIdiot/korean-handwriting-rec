@@ -14,7 +14,7 @@ authors:
 repository-code: "https://github.com/VerifiedIdiot/korean-handwriting-rec"
 url: "https://huggingface.co/Rebeccaaaaaaaa/korean-handwriting-rec"
 license: Apache-2.0
-version: 1.1.0
+version: 1.2.0
 date-released: 2026-11-20
 keywords:
   - ocr

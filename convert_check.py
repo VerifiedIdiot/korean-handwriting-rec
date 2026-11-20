@@ -5,6 +5,7 @@ ONNX 의 손글씨 단어 정확도(학습 전 기준선)를 잰다.
 """
 
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,9 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "PaddleOCR2Pytorch"))
 from converter.ppocr_v5_rec_converter import PPOCRv5RecConverter, read_network_config_from_yaml  # noqa: E402
 
-DICT = ROOT / "PaddleOCR/ppocr/utils/dict/ppocrv5_korean_dict.txt"
+# 글자 사전 — 사전학습 가중치는 PP-OCRv5 한국어 사전(BASE_DICT) 모양이다. 손글씨 기호(₩·〃)를 더한 사전은 OCR_DICT 로 준다
+BASE_DICT = ROOT / "PaddleOCR/ppocr/utils/dict/ppocrv5_korean_dict.txt"
+DICT = Path(os.environ.get("OCR_DICT") or BASE_DICT)
 # 기존 모델: huggingface.co/PaddlePaddle/korean_PP-OCRv5_mobile_rec_onnx 의 inference.onnx 를 이 이름으로 받아 둔다
 ONNX = ROOT / "pretrained/rec_korean.onnx"
 PRETRAINED = ROOT / "pretrained/korean_PP-OCRv5_mobile_rec_pretrained.pdparams"
@@ -29,7 +32,8 @@ CHARS = ["", *DICT.read_text(encoding="utf-8").splitlines(), " "]
 
 def network_config() -> dict:
     cfg = yaml.safe_load((ROOT / "PaddleOCR2Pytorch/configs/rec/PP-OCRv5/PP-OCRv5_mobile_rec.yml").read_text(encoding="utf-8"))
-    cfg["Global"]["character_dict_path"] = str(DICT)
+    # 사전학습 가중치의 모양은 기본 사전 그대로 — 더한 글자 칸은 학습 코드가 넓힌다 (train_rec.CtcRec.widen)
+    cfg["Global"]["character_dict_path"] = str(BASE_DICT)
     path = ROOT / "configs/torch_korean_rec.yml"
     path.parent.mkdir(exist_ok=True)
     path.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8")
@@ -46,7 +50,7 @@ def load_torch() -> torch.nn.Module:
     except ImportError:
         from pytorchocr.modeling.architectures.base_model import BaseModel
 
-        net = BaseModel(network_config(), out_channels=len(CHARS))
+        net = BaseModel(network_config(), out_channels=len(BASE_DICT.read_text(encoding="utf-8").splitlines()) + 2)
         net.load_state_dict(torch.load(PRETRAINED_TORCH, map_location="cpu", weights_only=True))
         return net.eval()
     net = PPOCRv5RecConverter(network_config(), str(PRETRAINED)).net.eval()

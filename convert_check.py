@@ -36,8 +36,23 @@ def network_config() -> dict:
     return read_network_config_from_yaml(str(path))
 
 
+PRETRAINED_TORCH = ROOT / "pretrained/korean_PP-OCRv5_mobile_rec_pretrained.pt"
+
+
 def load_torch() -> torch.nn.Module:
-    return PPOCRv5RecConverter(network_config(), str(PRETRAINED)).net.eval()
+    """paddle 이 있으면 원본 가중치를 변환하고 PyTorch 판을 남긴다. 없으면(paddle 이 없는 aarch64 서버 등) 남긴 판을 읽는다."""
+    try:
+        import paddle  # noqa: F401
+    except ImportError:
+        from pytorchocr.modeling.architectures.base_model import BaseModel
+
+        net = BaseModel(network_config(), out_channels=len(CHARS))
+        net.load_state_dict(torch.load(PRETRAINED_TORCH, map_location="cpu", weights_only=True))
+        return net.eval()
+    net = PPOCRv5RecConverter(network_config(), str(PRETRAINED)).net.eval()
+    if not PRETRAINED_TORCH.exists():
+        torch.save(net.state_dict(), PRETRAINED_TORCH)
+    return net
 
 
 def preprocess(image: np.ndarray) -> np.ndarray:

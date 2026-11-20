@@ -273,12 +273,13 @@ def main() -> None:
     parser.add_argument("--bench", type=int, default=0, help="이 반복 수만 돌려 속도를 잰다")
     parser.add_argument("--compile", action="store_true", help="torch.compile 로 연산을 합친다 (Mac GPU 는 실험 기능)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "mps", help="cuda(NVIDIA GPU)·mps(Mac)")
     parser.add_argument("--resume", type=Path, help="이어 학습할 가중치 (best.pt·stepN.pt)")
     parser.add_argument("--start-step", type=int, default=0, help="이어 학습: 이미 마친 반복 수 — 그만큼 배치를 건너뛰고 학습률도 거기서 잇는다")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
-    device = torch.device("mps")
+    device = torch.device(args.device)
     args.out.mkdir(parents=True, exist_ok=True)
     model = build_model()
     if args.resume:
@@ -328,17 +329,16 @@ def main() -> None:
             schedule.step()
             step, seen = step + 1, seen + images.shape[0]
             if step % EMPTY_CACHE_EVERY == 0:
-                torch.mps.empty_cache()
+                (torch.mps.empty_cache() if device.type == "mps" else None)
             if step % 50 == 0 or step == total:
                 elapsed = time.perf_counter() - started
                 # 쓰는 양(텐서)과 쥔 양(캐시 포함)을 함께 남긴다 — 쓰는 양이 늘면 누수, 쥔 양만 늘면 캐시
                 record({"step": step, "of": total, "loss": round(float(loss), 4), "lr": schedule.get_last_lr()[0],
                         "samples_per_s": round(seen / elapsed, 1), "elapsed_min": round(elapsed / 60, 1),
-                        "mps_used_gb": round(torch.mps.current_allocated_memory() / 1e9, 2),
-                        "mps_held_gb": round(torch.mps.driver_allocated_memory() / 1e9, 2)})
+                        "mem_gb": round((torch.mps.current_allocated_memory() if device.type == "mps" else torch.cuda.memory_allocated()) / 1e9, 2)})
             if not args.bench and (step % args.eval_every == 0 or step == total):
                 result = evaluate(net, val_set, device, args.eval_words)
-                torch.mps.empty_cache()
+                (torch.mps.empty_cache() if device.type == "mps" else None)
                 record({"step": step, "val": result})
                 torch.save(model.state_dict(), args.out / f"step{step}.pt")
                 if result["word_acc"] > best["word_acc"]:
